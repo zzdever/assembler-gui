@@ -1,44 +1,3 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
 #include "mainwindow.h"
 #include "colorswatch.h"
 #include "toolbar.h"
@@ -63,24 +22,14 @@
 #include <QPushButton>
 #include <qdebug.h>
 #include <QSplitter>
+#include <QTableView>
+#include <QHeaderView>
+#include <QTableWidget>
+#include <sstream>
+#include <QStandardItem>
+#include "modules/modules.h"
+#include "modules/assembler.h"
 
-//static const char * const message =
-//    "<p><b>Qt Main Window Example</b></p>"
-
-//    "<p>This is a demonstration of the QMainWindow, QToolBar and "
-//    "QDockWidget classes.</p>"
-
-//    "<p>The tool bar and dock widgets can be dragged around and rearranged "
-//    "using the mouse or via the menu.</p>"
-
-//    "<p>Each dock widget contains a colored frame and a context "
-//    "(right-click) menu.</p>"
-
-//#ifdef Q_OS_MAC
-//    "<p>On Mac OS X, the \"Black\" dock widget has been created as a "
-//    "<em>Drawer</em>, which is a special kind of QDockWidget.</p>"
-//#endif
-//    ;
 
 Q_DECLARE_METATYPE(QDockWidget::DockWidgetFeatures)
 
@@ -99,7 +48,7 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags)
     //setCentralWidget(left);
 
     center = new QTextEdit(this);
-    center->setReadOnly(false);
+    center->setReadOnly(true);
     center->setMinimumSize(200, 205);
     //setCentralWidget(center);
 
@@ -107,6 +56,11 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags)
     splitter->setHandleWidth(0);
     splitter->addWidget(left);
     splitter->addWidget(center);
+
+    currentRunningLine=0;
+    stop=false;
+
+
     this->setCentralWidget(splitter);
 
     setupToolBar();
@@ -129,7 +83,118 @@ void MainWindow::setupToolBar()
     toolBars.append(tb);
     addToolBar(tb);
 
+    connect(tb,&ToolBar::Step,this,&MainWindow::Step);
+    connect(tb,&ToolBar::Stop,this,&MainWindow::Stop);
+
     return;
+}
+
+//void MainWindow::Exception(QString information)
+//{
+//    qDebug()<<"information from others: "<<information;
+//}
+
+void MainWindow::SetMemoryWindow()
+{
+    QStandardItemModel *model=new QStandardItemModel(MEMORYSIZE/4,2);
+    QModelIndex index;
+    QString string;
+
+    quint32 memoryContent;
+    model->setHeaderData(0,Qt::Horizontal,tr("address"));
+    model->setHeaderData(1,Qt::Horizontal,tr("content"));
+    for(int row=0;row<MEMORYSIZE/4;row++)
+    {
+        for(int col=0;col<2;col++)
+        {
+
+            index = model->index(row, col, QModelIndex());
+            if(col==0)
+            {
+                string=QString("%1").arg(row*4,8,16,QChar('0'));
+                model->setData(index,string);
+            }
+            if(col==1)
+            {
+                memoryContent=emulator.memArray[row*4]<<24 | emulator.memArray[row*4+1]<<16
+                            | emulator.memArray[row*4+2]<<8 | emulator.memArray[row*4+3];
+                string=QString("%1").arg(memoryContent,8,16,QChar('0'));
+                model->setData(index,string);
+            }
+
+        }
+    }
+    memoryTable->setModel(model);
+    memoryTable->show();
+}
+
+
+void MainWindow::SetRegisterWindow()
+{
+    QStandardItemModel *model=new QStandardItemModel(REGISTERSETSIZE,2);
+    QModelIndex index;
+    QString string;
+
+    model->setHeaderData(0,Qt::Horizontal,tr("name"));
+    model->setHeaderData(1,Qt::Horizontal,tr("content"));
+    for(int row=0;row<REGISTERSETSIZE;row++)
+    {
+        for(int col=0;col<2;col++)
+        {
+
+            index = model->index(row, col, QModelIndex());
+            if(col==0)
+            {
+                string="#"+QString("%1").arg(row)+":"+QString("$")+registerSet[row].name;
+                model->setData(index,string);
+            }
+            if(col==1)
+            {
+                string=QString("%1").arg(emulator.registerArray[row],8,16,QChar('0'));
+                model->setData(index,string);
+            }
+
+        }
+    }
+    registerTable->setModel(model);
+    registerTable->show();
+}
+
+
+void MainWindow::Stop()
+{
+    currentRunningLine=0;
+    emulator.Init();
+    SetMemoryWindow();
+    SetRegisterWindow();
+}
+
+void MainWindow::Step(int line)
+{
+    if(fileObjName==""){
+        qDebug()<<"No obj file opened";
+        return;
+    }
+
+    if(line==NEXT){
+        emulator.Step(fileObjName,currentRunningLine,currentRunningLine+1);
+        currentRunningLine=emulator.registerArray[PC]/4;
+    }
+    else if(line==RUN){
+        while(emulator.Step(fileObjName,currentRunningLine,line)!=-1);
+        currentRunningLine=emulator.registerArray[PC]/4;
+    }
+    else{
+        for(int i=0;i<line-currentRunningLine;i++){
+            emulator.Step(fileObjName,currentRunningLine,line);
+            currentRunningLine=emulator.registerArray[PC]/4;
+        }
+    }
+
+ qDebug()<<"return: "<<currentRunningLine;
+    showObj();
+    SetMemoryWindow();
+    SetRegisterWindow();
 }
 
 void MainWindow::setupMenuBar()
@@ -144,10 +209,10 @@ void MainWindow::setupMenuBar()
     connect(action, SIGNAL(triggered()), this, SLOT(openFile()));
 
     action = menu->addAction(tr("Save"));
-    connect(action, SIGNAL(triggered()), this, SLOT(saveLayout()));
+    connect(action, SIGNAL(triggered()), this, SLOT(saveFile()));
 
-    action = menu->addAction(tr("Save as"));
-    connect(action, SIGNAL(triggered()), this, SLOT(saveLayout()));
+//    action = menu->addAction(tr("Save as"));
+//    connect(action, SIGNAL(triggered()), this, SLOT(saveFile()));
     menu->addSeparator();
     menu->addAction(tr("Quit"), this, SLOT(close()));
 
@@ -155,28 +220,26 @@ void MainWindow::setupMenuBar()
     mainWindowMenu = menuBar()->addMenu(tr("Build"));
 
     action = mainWindowMenu->addAction(tr("Assemble"));
-    connect(action, SIGNAL(toggled(bool)), this, SLOT(Assemble()));
+    connect(action, SIGNAL(triggered()), this, SLOT(assemble()));
 
     action = mainWindowMenu->addAction(tr("Disassemble"));
-    action->setCheckable(true);
-    action->setChecked(dockOptions() & AllowNestedDocks);
-    connect(action, SIGNAL(toggled(bool)), this, SLOT(Disassemble()));
+    connect(action, SIGNAL(triggered()), this, SLOT(Disassemble()));
 
     action = mainWindowMenu->addAction(tr("Gen coe"));
-    connect(action, SIGNAL(toggled(bool)), this, SLOT(GenCoe()));
+    connect(action, SIGNAL(triggered()), this, SLOT(GenCoe()));
 
     //About
     QMenu *aboutMenu = menuBar()->addMenu(tr("About"));
 
-    action = aboutMenu->addAction("dev");
-    connect(action, SIGNAL(triggered()), this, SLOT(newFile()));
+    action = aboutMenu->addAction("author");
+    connect(action, SIGNAL(triggered()), this, SLOT(devInfo()));
 
 
     //QMenu *toolBarMenu = menuBar()->addMenu(tr("Tool bars"));
     //for (int i = 0; i < toolBars.count(); ++i)
     //  toolBarMenu->addMenu(toolBars.at(i)->menu);
 
-    dockWidgetMenu = menuBar()->addMenu(tr("&Dock Widgets"));
+    dockWidgetMenu = menuBar()->addMenu(tr(""));
 }
 
 void MainWindow::setDockOptions()
@@ -198,129 +261,6 @@ void MainWindow::setDockOptions()
     QMainWindow::setDockOptions(opts);
 }
 
-void MainWindow::newFile()
-{
-    ;
-}
-
-void MainWindow::saveLayout()
-{
-    QString fileName
-        = QFileDialog::getSaveFileName(this, tr("Save layout"));
-    if (fileName.isEmpty())
-        return;
-    QFile file(fileName);
-    if (!file.open(QFile::WriteOnly)) {
-        QString msg = tr("Failed to open %1\n%2")
-                        .arg(fileName)
-                        .arg(file.errorString());
-        QMessageBox::warning(this, tr("Error"), msg);
-        return;
-    }
-
-    QByteArray geo_data = saveGeometry();
-    QByteArray layout_data = saveState();
-
-    bool ok = file.putChar((uchar)geo_data.size());
-    if (ok)
-        ok = file.write(geo_data) == geo_data.size();
-    if (ok)
-        ok = file.write(layout_data) == layout_data.size();
-
-    if (!ok) {
-        QString msg = tr("Error writing to %1\n%2")
-                        .arg(fileName)
-                        .arg(file.errorString());
-        QMessageBox::warning(this, tr("Error"), msg);
-        return;
-    }
-}
-
-void MainWindow::openFile()
-{
-    filename = QFileDialog::getOpenFileName(this, tr("Open ASM File"));
-    if (filename.isEmpty())
-        return;
-
-    showAsm();
-
-//    uchar geo_size;
-//    QByteArray geo_data;
-//    QByteArray layout_data;
-
-
-//    bool ok = file.getChar((char*)&geo_size);
-//    if (ok) {
-//        geo_data = file.read(geo_size);
-//        ok = geo_data.size() == geo_size;
-//    }
-//    if (ok) {
-//        layout_data = file.readAll();
-//        ok = layout_data.size() > 0;
-//    }
-
-//    if (ok)
-//        ok = restoreGeometry(geo_data);
-//    if (ok)
-//        ok = restoreState(layout_data);
-
-//    if (!ok) {
-//        QString msg = tr("Error reading %1")
-//                        .arg(fileName);
-//        QMessageBox::warning(this, tr("Error"), msg);
-//        return;
-//    }
-
-}
-
-void MainWindow::showAsm(int error)
-{
-    QFile fileAsm(filename);
-    if (!fileAsm.open(QFile::ReadOnly)) {
-        QString msg = tr("Failed to open %1\n%2")
-                        .arg(filename)
-                        .arg(fileAsm.errorString());
-        QMessageBox::warning(this, tr("Error"), msg);
-        return;
-    }
-    QTextStream streamAsm(&fileAsm);
-
-    QString line;
-    int lineNumber=0;
-    while(!streamAsm.atEnd())
-    {
-        line=streamAsm.readLine();
-
-        QColor textColor(160,160,160);
-        left->setTextColor(textColor);
-        //left->append(QString("lineNumber"));
-        left->insertPlainText("sfsfd ");
-        textColor.setRed(216);
-        textColor.setGreen(127);
-        textColor.setBlue(98);
-        left->setTextColor(textColor);
-        left->insertPlainText(line+"\n");
-
-        lineNumber++;
-    }
-
-    fileAsm.close();
-}
-
-void MainWindow::Assemble()
-{
-    ;
-}
-
-void MainWindow::Disassemble()
-{
-    ;
-}
-
-void MainWindow::GenCoe()
-{
-    ;
-}
 
 QAction *addAction(QMenu *menu, const QString &text, QActionGroup *group, QSignalMapper *mapper,
                     int id)
@@ -343,43 +283,18 @@ void MainWindow::setupDockWidgets(void)
     mapper = new QSignalMapper(this);
     connect(mapper, SIGNAL(mapped(int)), this, SLOT(setCorner(int)));
 
-//    QMenu *corner_menu = dockWidgetMenu->addMenu(tr("Top left corner"));
-//    QActionGroup *group = new QActionGroup(this);
-//    group->setExclusive(true);
-//    ::addAction(corner_menu, tr("Top dock area"), group, mapper, 0);
-//    ::addAction(corner_menu, tr("Left dock area"), group, mapper, 1);
-
-//    corner_menu = dockWidgetMenu->addMenu(tr("Top right corner"));
-//    group = new QActionGroup(this);
-//    group->setExclusive(true);
-//    ::addAction(corner_menu, tr("Top dock area"), group, mapper, 2);
-//    ::addAction(corner_menu, tr("Right dock area"), group, mapper, 3);
-
-//    corner_menu = dockWidgetMenu->addMenu(tr("Bottom left corner"));
-//    group = new QActionGroup(this);
-//    group->setExclusive(true);
-//    ::addAction(corner_menu, tr("Bottom dock area"), group, mapper, 4);
-//    ::addAction(corner_menu, tr("Left dock area"), group, mapper, 5);
-
-//    corner_menu = dockWidgetMenu->addMenu(tr("Bottom right corner"));
-//    group = new QActionGroup(this);
-//    group->setExclusive(true);
-//    ::addAction(corner_menu, tr("Bottom dock area"), group, mapper, 6);
-//    ::addAction(corner_menu, tr("Right dock area"), group, mapper, 7);
-
-//    dockWidgetMenu->addSeparator();
 
     static const struct Set {
         const char * name;
         uint flags;
         Qt::DockWidgetArea area;
     } sets [] = {
-        { "Black", 0, Qt::LeftDockWidgetArea },
-        { "White", 0, Qt::RightDockWidgetArea },
+        //{ "Memory", 0, Qt::LeftDockWidgetArea },
+        //{ "Register", 0, Qt::RightDockWidgetArea },
         //{ "Red", 0, Qt::TopDockWidgetArea },
         //{ "Green", 0, Qt::TopDockWidgetArea },
         //{ "Blue", 0, Qt::BottomDockWidgetArea },
-        { "Yellow", 0, Qt::BottomDockWidgetArea }
+        { "Info", 0, Qt::BottomDockWidgetArea }
     };
     const int setCount = sizeof(sets) / sizeof(Set);
 
@@ -388,70 +303,52 @@ void MainWindow::setupDockWidgets(void)
     for (int i = 0; i < setCount; ++i)
     {
         ColorSwatch *swatch = new ColorSwatch(tr(sets[i].name), this, Qt::WindowFlags(sets[i].flags));
-//        if (i%2)
-//            swatch->setWindowIcon(QIcon(QPixmap(":/res/qt.png")));
-//        if (qstrcmp(sets[i].name, "Blue") == 0) {
-//            BlueTitleBar *titlebar = new BlueTitleBar(swatch);
-//            swatch->setTitleBarWidget(titlebar);
-//            connect(swatch, SIGNAL(topLevelChanged(bool)), titlebar, SLOT(updateMask()));
-//            connect(swatch, SIGNAL(featuresChanged(QDockWidget::DockWidgetFeatures)),
-//                    titlebar, SLOT(updateMask()), Qt::QueuedConnection);
-//        }
-
-//        QString name = QString::fromLatin1(sets[i].name);
-//        if (customSizeHints.contains(name))
-//            swatch->setCustomSizeHint(customSizeHints.value(name));
 
         QSize size(250,80);
         swatch->setCustomSizeHint(size);
         addDockWidget(sets[i].area, swatch);
 
+
 //        dockWidgetMenu->addMenu(swatch->menu);
     }
 
-//    createDockWidgetAction = new QAction(tr("Add dock widget..."), this);
-//    connect(createDockWidgetAction, SIGNAL(triggered()), this, SLOT(createDockWidget()));
-//    destroyDockWidgetMenu = new QMenu(tr("Destroy dock widget"), this);
-//    destroyDockWidgetMenu->setEnabled(false);
-//    connect(destroyDockWidgetMenu, SIGNAL(triggered(QAction*)), this, SLOT(destroyDockWidget(QAction*)));
+    registerDock = new QDockWidget(tr("Register"), this);
+    registerDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    registerTable = new QTableView(registerDock);
+    QStandardItemModel *registerModel = new QStandardItemModel(32, 2);
+    registerModel->setHeaderData(0,Qt::Horizontal,QObject::tr("name"));
+    registerModel->setHeaderData(1,Qt::Horizontal,QObject::tr("content"));
+    //QTableModel::Tab_Model *delegate = new Tab_Model;
+    registerTable->setModel(registerModel);
+    registerTable->verticalHeader()->hide();
+    registerTable->horizontalHeader()->setStretchLastSection(true);
+    registerDock->setMaximumWidth( 327 );
+    registerDock->setWidget(registerTable);
+    addDockWidget(Qt::RightDockWidgetArea, registerDock);
 
-//    dockWidgetMenu->addSeparator();
-//    dockWidgetMenu->addAction(createDockWidgetAction);
-//    dockWidgetMenu->addMenu(destroyDockWidgetMenu);
+
+    memoryDock = new QDockWidget(tr("Memory"), this);
+    memoryDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+    memoryTable = new QTableView(memoryDock);
+    QStandardItemModel *memoryModel = new QStandardItemModel(MEMORYSIZE/4,2);
+    memoryModel->setHeaderData(0,Qt::Horizontal,QObject::tr("address"));
+    memoryModel->setHeaderData(1,Qt::Horizontal,QObject::tr("content"));
+    //memoryModel->
+    //QTableModel::Tab_Model *delegate = new Tab_Model;
+    memoryTable->setModel(memoryModel);
+    memoryTable->verticalHeader()->hide();
+    memoryTable->horizontalHeader()->setStretchLastSection(true);
+    //memoryTable->resizeColumnToContents(0);
+    memoryDock->setWidget(memoryTable);
+    addDockWidget(Qt::LeftDockWidgetArea, memoryDock);
 
 }
 
-void MainWindow::setCorner(int id)
+void MainWindow::   setCorner(int id)
 {
     QMainWindow::setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
     QMainWindow::setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
 
-//    switch (id) {
-//        case 0:
-//            QMainWindow::setCorner(Qt::TopLeftCorner, Qt::TopDockWidgetArea);
-//            break;
-//        case 1:
-//            QMainWindow::setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea);
-//            break;
-//        case 2:
-//            QMainWindow::setCorner(Qt::TopRightCorner, Qt::TopDockWidgetArea);
-//            break;
-//        case 3:
-//            QMainWindow::setCorner(Qt::TopRightCorner, Qt::RightDockWidgetArea);
-//            break;
-//        case 4:
-//            QMainWindow::setCorner(Qt::BottomLeftCorner, Qt::BottomDockWidgetArea);
-//            break;
-//        case 5:
-//            QMainWindow::setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea);
-//            break;
-//        case 6:
-//            QMainWindow::setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea);
-//            break;
-//        case 7:
-//            QMainWindow::setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
-//            break;
-//    }
 }
 
 void MainWindow::showEvent(QShowEvent *event)
@@ -531,47 +428,341 @@ Qt::DockWidgetArea CreateDockWidgetDialog::location() const
     return Qt::NoDockWidgetArea;
 }
 
-//void MainWindow::createDockWidget()
-//{
-//    CreateDockWidgetDialog dialog(this);
-//    int ret = dialog.exec();
-//    if (ret == QDialog::Rejected)
+
+void MainWindow::openFile()
+{
+    QString nameStr = QFileDialog::getOpenFileName(this, tr("Open ASM File"));
+    if (nameStr.isEmpty())
+        return;
+
+    left->setText("");
+    center->setText("");
+    if(nameStr.endsWith(".asm",Qt::CaseInsensitive))
+    {
+        //if(!fileAsmName.isEmpty()) fileAsm.close();
+        fileAsmName=nameStr;
+        //fileAsmSaved=true;
+        //fileAsmEdited=false;
+        filename=fileAsmName;
+        filename.truncate(filename.length()-4);
+        showAsm(-1);
+    }
+    else if(nameStr.endsWith(".obj",Qt::CaseInsensitive))
+    {
+        fileObjName=nameStr;
+        //fileObjSaved=true;
+        //fileObjEdited=false;
+        filename=fileObjName;
+        filename.truncate(filename.length()-4);
+
+        assembler.DisAssem(filename);
+        fileAsmName=filename+".asm";
+        assemble();
+        left->setText("");
+
+        showObj();
+    }
+    else
+    {
+        QString msg = tr("Unsupported file type");
+        QMessageBox::warning(this, tr("Error"), msg);
+    }
+
+
+    Stop();  //initialize memory and registers
+
+}
+
+void MainWindow::newFile()
+{
+    left->setText("");
+    fileAsmName="";
+}
+
+void MainWindow::saveFile()
+{
+    QString nameStr;
+    if(fileAsmName.isEmpty() )
+    {
+        nameStr= QFileDialog::getSaveFileName(this, tr("Save ASM file"));
+        filename=nameStr;
+    }
+    else
+        nameStr=fileAsmName;
+
+    fileAsmName=filename+".asm";
+
+    if (nameStr.isEmpty())
+        return;
+
+    QFile file(fileAsmName);
+    if (!file.open(QFile::WriteOnly)) {
+        QString msg = tr("Failed to open %1\n%2")
+                        .arg(nameStr)
+                        .arg(file.errorString());
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+    QTextStream stream(&file);
+
+    stream<<left->toPlainText();
+
+    file.close();
+
+//    QByteArray geo_data = saveGeometry();
+//    QByteArray layout_data = saveState();
+
+//    bool ok = file.putChar((uchar)geo_data.size());
+//    if (ok)
+//        ok = file.write(geo_data) == geo_data.size();
+//    if (ok)
+//        ok = file.write(layout_data) == layout_data.size();
+
+//    if (!ok) {
+//        QString msg = tr("Error writing to %1\n%2")
+//                        .arg(fileName)
+//                        .arg(file.errorString());
+//        QMessageBox::warning(this, tr("Error"), msg);
 //        return;
-
-//    QDockWidget *dw = new QDockWidget;
-//    dw->setObjectName(dialog.objectName());
-//    dw->setWindowTitle(dialog.objectName());
-//    dw->setWidget(new QTextEdit);
-
-//    Qt::DockWidgetArea area = dialog.location();
-//    switch (area) {
-//        case Qt::LeftDockWidgetArea:
-//        case Qt::RightDockWidgetArea:
-//        case Qt::TopDockWidgetArea:
-//        case Qt::BottomDockWidgetArea:
-//            addDockWidget(area, dw);
-//            break;
-//        default:
-//            if (!restoreDockWidget(dw)) {
-//                QMessageBox::warning(this, QString(), tr("Failed to restore dock widget"));
-//                delete dw;
-//                return;
-//            }
-//            break;
 //    }
+}
 
-//    extraDockWidgets.append(dw);
-//    destroyDockWidgetMenu->setEnabled(true);
-//    destroyDockWidgetMenu->addAction(new QAction(dialog.objectName(), this));
-//}
 
-//void MainWindow::destroyDockWidget(QAction *action)
-//{
-//    int index = destroyDockWidgetMenu->actions().indexOf(action);
-//    delete extraDockWidgets.takeAt(index);
-//    destroyDockWidgetMenu->removeAction(action);
-//    action->deleteLater();
+void MainWindow::assemble()
+{
+    if(filename.isEmpty())return;
+    assembler.Assemble(filename);
+    fileXmlName=filename+".xml";
+    fileObjName=filename+".obj";
+    fileObjHexName=filename+".objh";
+    showObj();
+}
 
-//    if (destroyDockWidgetMenu->isEmpty())
-//        destroyDockWidgetMenu->setEnabled(false);
-//}
+void MainWindow::Disassemble()
+{
+    if(filename.isEmpty()) return;
+    showAsm();
+}
+
+void MainWindow::GenCoe()
+{
+    if(fileObjName.isEmpty())
+    {
+        QString msg = tr("Assemble first!");
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+
+    QString nameStr = QFileDialog::getSaveFileName(this, tr("Save COE file to"));
+    if (nameStr.isEmpty())
+        return;
+
+    nameStr+=".coe";
+    QFile file(nameStr);
+    if (!file.open(QFile::WriteOnly)) {
+        QString msg = tr("Failed to open %1\n%2")
+                        .arg(nameStr)
+                        .arg(file.errorString());
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+    QTextStream stream(&file);
+
+    QFile fileObjH(fileObjHexName);
+    if (!fileObjH.open(QFile::ReadOnly)) {
+        QString msg = tr("Failed to open %1\n%2")
+                        .arg(fileObjHexName)
+                        .arg(file.errorString());
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+    QTextStream streamObjH(&fileObjH);
+
+    stream<<"memory_initialization_radix=16;"<<endl
+         <<"memory_initialization_vector="<<endl;
+
+    while(!streamObjH.atEnd())
+    {
+        stream<<streamObjH.readLine();
+        stream<<" ";
+    }
+    stream <<";";
+
+    file.close();
+    fileObjH.close();
+}
+
+void MainWindow::showAsm(int error)
+{
+    if(fileAsmName.isEmpty() && fileXmlName.isEmpty()) return;
+
+    left->setText("");
+
+    bool xml;
+    QFile file;
+    if(fileAsmName.isEmpty())
+    {
+        file.setFileName(fileXmlName);
+        xml=true;
+    }
+    else
+    {
+        file.setFileName(fileAsmName);
+        xml=false;
+    }
+
+    if (!file.open(QFile::ReadOnly)) {
+        QString msg = tr("Failed to open %1\n%2")
+                        .arg(fileAsmName)
+                        .arg(file.errorString());
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+    QTextStream stream(&file);
+
+    QString line;
+    int lineNumber=1;
+    QColor textColor(0,0,0);
+//    if(xml)
+//    {
+//        while(!stream.atEnd()){
+//            stream>>line;
+
+//            if(line.compare("<blankline/>")==0)
+//                continue;
+//            else if(line.compare("<linenumber>")==0)
+//            {
+//                stream.readLine();
+//                continue;
+//            }
+//            else if(line.compare("<comment>")==0)
+//            {
+//                textColor.setRgb(120,120,120);  //comment
+//                left->setTextColor(textColor);
+//                line=stream.readLine();
+//                line.truncate(line.length()-11);
+//                left->append("#"+line);
+//            }
+//            else if(line.compare("<instruction>")==0)
+//            {
+//                line=stream.read();
+//                textColor.setRgb(216,127,98);  //instruction
+//                left->setTextColor(textColor);
+//                left->insertPlainText(line);
+//                stream.readLine();
+
+//                while(1)
+//                {
+//                    line=stream.read();
+//                    if(line.compare("<register>")==0)
+//                    {
+//                        textColor.setRgb(135,153,179);
+//                        left->setTextColor(textColor);
+//                        left->insertPlainText(" "+line);
+//                        stream.readLine();
+//                        continue;
+//                    }
+
+//                    if(line.compare("<register>")==0)
+//                    {
+//                        textColor.setRgb(135,153,179);
+//                        left->setTextColor(textColor);
+//                        left->insertPlainText(" "+line);
+//                        stream.readLine();
+//                        continue;
+//                    }
+
+//                }
+//            }
+
+//            stream.readLine();
+//        }
+
+//    }
+//    else
+        while(!stream.atEnd())
+        {
+            line=stream.readLine();
+            textColor.setRgb(0,0,0);
+            if(lineNumber==error)
+            {
+                textColor.setRgb(219,21,49);  //error color
+                left->setFontUnderline(true);
+            }
+            left->setTextColor(textColor);
+            left->append(line);
+    //        textColor.setRed(216);
+    //        textColor.setGreen(127);
+    //        textColor.setBlue(98);
+
+            left->setFontUnderline(false);
+
+            lineNumber++;
+        }
+
+
+    file.close();
+}
+
+void MainWindow::showObj(int errorLine, int runningLine, bool hex)
+{
+    if(fileObjName.isEmpty()) return;
+
+    center->setText("");
+
+    QFile file(fileObjHexName);
+    QTextStream textStream;
+    QDataStream dataStream;
+
+    file.setFileName(fileObjHexName);
+    if (!file.open(QFile::ReadOnly)) {
+        QString msg = tr("Failed to open %1\n%2")
+                        .arg(fileObjHexName)
+                        .arg(file.errorString());
+        QMessageBox::warning(this, tr("Error"), msg);
+        return;
+    }
+    textStream.setDevice(&file);
+
+
+    QString line;
+    //std::stringstream line;
+    int lineNumber=1;
+    int address=0;
+    QColor textColor(120,120,120);
+
+    while(!textStream.atEnd())
+    {
+        line=textStream.readLine();
+
+        center->setTextColor(textColor);
+        //left->insertPlainText(line+"  ");
+
+        textColor.setRgb(0,0,0);
+        if(errorLine==lineNumber){
+            textColor.setRgb(219,21,49);  //error color
+            center->setFontUnderline(true);
+        }
+        if(currentRunningLine==lineNumber) textColor.setRgb(255,127,0);  //running color
+        center->setTextColor(textColor);
+        center->append(line);
+
+
+        lineNumber++;
+        address+=4;
+    }
+
+    QTextCursor textCursor = center->textCursor();
+    textCursor.movePosition(QTextCursor::Start);
+    for (int i=0;i<currentRunningLine-1;i++)
+        textCursor.movePosition(QTextCursor::Down);
+    center->setTextCursor(textCursor);
+
+}
+
+void MainWindow::devInfo()
+{
+    QString msg = tr("3120101966 应哲敏\nzzdever@gmail.com");
+    QMessageBox::about(this,tr("about"),msg);
+    return;
+}

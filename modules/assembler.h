@@ -20,7 +20,7 @@ struct Register{
 };
 
 #define INSTRUCTIONSETSIZE 31
-#define REGISTERSETSIZE 32
+#define REGISTERSETSIZE 31
 //short int coreInstructionSetIndex[26];
 
 static struct CoreInstruction coreInstructionSet[]={
@@ -89,7 +89,8 @@ static struct Register registerSet[]={
     {"gp", 28},
     {"sp", 29},
     {"fp", 30},
-    {"ra", 31}
+    {"ra", 31},
+    {"pc", 32}
 };
 
 

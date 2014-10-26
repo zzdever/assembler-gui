@@ -1,8 +1,4 @@
-﻿#define STEP     01
-#define DISASSEM 0
-#define ASSEM    0
-#define TEST     0
-#define TEST2    0
+﻿#include "modules.h"
 
 #include <iostream>
 #include <sstream>
@@ -13,36 +9,100 @@
 #include <QDebug>
 #include <QTextCodec>
 #include <QByteArray>
+#include <QObject>
 #include "assembler.h"
 #include "lookuptable.h"
 
-#if STEP
-int Step(void)
+Emulator::Emulator()
 {
-QString filename("/Users/ying/assemble");
-    QFile fileObj(filename+".objj");
+    isProgramLoaded=false;
+    Init();
+}
+
+void Emulator::Init(void)
+{
+    for(int i=0;i<MEMORYSIZE;i++)
+    {
+        memArray[i]=0;
+    }
+
+    for(int i=0;i<REGISTERSETSIZE+1;i++)
+    {
+        registerArray[i]=0;
+    }
+
+    isProgramLoaded=false;
+    registerArray[REGISTERSETSIZE]=0;
+}
+
+
+void Emulator::LoadProgram(QString filename)
+{
+    QFile fileObj(filename);
     if(!fileObj.open(QIODevice::ReadOnly )){
         qDebug()<<"Error in opening object file";
-        return -1;
+        return;
     }
-    //QTextStream streamObj(&fileObj);
     QDataStream streamObj(&fileObj);
     streamObj.setVersion(QDataStream::Qt_5_2);
 
-    int registerArray[32]={0};
-    char memArray[1024*1024];  //1MB memory
 
-    quint32 instruction;
+    quint8 instruction;
+    quint32 memoryAddress=0;
+    while(!fileObj.atEnd())
+    {
+        streamObj>>instruction;
+        memArray[memoryAddress]=instruction;
+        memoryAddress++;
+    }
+
+    fileObj.close();
+    isProgramLoaded=true;
+    programSize=memoryAddress/4;
+
+    return;
+}
+
+int Emulator::Step(QString filename, int beginLine, int line)
+{
+    if(isProgramLoaded==false){
+        LoadProgram(filename);
+        qDebug()<<"Program loaded";
+    }
+
+    //ShowError(QString("Step is running"));
+
+//QString filename("/Users/ying/assemble");
+//    QFile fileObj(filename);
+//    if(!fileObj.open(QIODevice::ReadOnly )){
+//        qDebug()<<"Error in opening object file";
+//        return -1;
+//    }
+    //QTextStream streamObj(&fileObj);
+//    QDataStream streamObj(&fileObj);
+//    streamObj.setVersion(QDataStream::Qt_5_2);
+
+    qint32 instruction;
     MatchTable matchTable;
     int matchId;
-    unsigned int lineNumber;
+    //unsigned int lineNumber=0;
     unsigned int instructionAddress=0;
     unsigned short int rs, rt, rd, shamt;
     unsigned int address;
     int immediate;
-    while(!streamObj.atEnd())
+
+    instructionAddress=registerArray[PC];
+    //while(instructionAddress<line*4 && !streamObj.atEnd())
     {
-        streamObj>>instruction;
+        if(instructionAddress>=programSize*4){
+            qDebug()<<"Out of program memory range";
+            return -1;
+        }
+
+
+        instruction=memArray[instructionAddress]<<24 | memArray[instructionAddress+1]<<16
+                  | memArray[instructionAddress+2]<<8 | memArray[instructionAddress+3];
+  qDebug()<<"execute:"<<hex<<instruction<<"  address: "<<instructionAddress;
 
         matchId=matchTable.DisassemMatchInstruction(instruction>>26, instruction & 0x3f);
 
@@ -84,6 +144,7 @@ QString filename("/Users/ying/assemble");
             default:
                 break;
             }
+            instructionAddress+=4;
             break;
 
         case 1: case 2: case 5: case 18: case 20: case 21:
@@ -113,43 +174,40 @@ QString filename("/Users/ying/assemble");
             default:
                 break;
             }
-
+            instructionAddress+=4;
             break;
 
         case 6: case 7:
             //beq,bne
             rs=((instruction>>21)&0x1f);
             rt=((instruction>>16)&0x1f);
-            address=(instruction&0xffff);
+            address=(instruction&0xffff)*4;
             switch (matchId) {
             case 6:
                 if(registerArray[rs] == registerArray[rt])
                     instructionAddress = instructionAddress + 4 + address;
+                else instructionAddress+=4;
                 break;
             case 7:
                 if(registerArray[rs] != registerArray[rt])
                     instructionAddress = instructionAddress + 4 + address;
+                else instructionAddress+=4;
                 break;
             default:
                 break;
             }
-
-            fileObj.seek(instructionAddress);
-
             break;
 
         case 8: case 9:
             //j,jal
-            instructionAddress=(instruction&0x3ffffff);
+            instructionAddress=(instruction&0x3ffffff)*4;
             if(matchId==9) registerArray[31]=instructionAddress;  //store address in $ra
-            fileObj.seek(instructionAddress);
             break;
 
         case 10:
             //jr
             rs=((instruction>>21)&0x1f);
             instructionAddress=registerArray[rs];
-            fileObj.seek(instructionAddress);
             break;
 
         case 11: case 12: case 13: case 15: case 25: case 26: case 27: case 28:
@@ -201,6 +259,7 @@ QString filename("/Users/ying/assemble");
             default:
                 break;
             }
+            instructionAddress+=4;
             break;
 
         case 14:
@@ -208,6 +267,7 @@ QString filename("/Users/ying/assemble");
             rt=((instruction>>16)&0x1f);
             immediate=(instruction&0xffff);
             registerArray[rt]=(immediate & 0xffff)<<16 & 0xffff0000;
+            instructionAddress+=4;
             break;
 
         case 23: case 24:
@@ -225,49 +285,36 @@ QString filename("/Users/ying/assemble");
             default:
                 break;
             }
+            instructionAddress+=4;
             break;
 
         default:
             qDebug()<<"Error while executing instruction "<<hex<<instruction<<reset;
+            instructionAddress+=4;
             break;
         }
 
         registerArray[0]=0;  //always set $zero to 0
-        instructionAddress += 4;
-
-        for(int i=0;i<32;i++)
-        {
-            qDebug()<<"$"<<i<<": "<<registerArray[i];
+        registerArray[PC]=instructionAddress;
+   qDebug()<<"::"<<instructionAddress<<"::"<<programSize;
+        if(instructionAddress>=programSize*4){
+            registerArray[PC]=0;
+            return -1;
         }
+
     }
 
-    fileObj.close();
+    //fileObj.close();
 
     return 0;
 }
 
-#endif
-
-#if TEST2
 
 
-int main(void)
+int Assembler::DisAssem(QString filename)
 {
-    int a;
-    char c=0xff;
-
-    a=(unsigned char)c;
-    qDebug()<<bin<<(a&0x00ff0000);
-
-
-    return 0;
-}
-#endif
-#if DISASSEM
-int main(void)
-{
-QString filename("/Users/ying/assemble");
-    QFile fileObj(filename+".objj");
+//QString filename("/Users/ying/assemble");
+    QFile fileObj(filename+".obj");
     if(!fileObj.open(QIODevice::ReadOnly )){
         qDebug()<<"Error in opening object file";
         return -1;
@@ -276,7 +323,7 @@ QString filename("/Users/ying/assemble");
     QDataStream streamObj(&fileObj);
     streamObj.setVersion(QDataStream::Qt_5_2);
 
-    QFile fileDisassem(filename+".disasm");
+    QFile fileDisassem(filename+".asm");
     if(!fileDisassem.open(QIODevice::WriteOnly | QIODevice::Text)){
         qDebug()<<"Error in writing to disassemble file";
         return -1;
@@ -314,13 +361,13 @@ QString filename("/Users/ying/assemble");
             streamDisassem<<coreInstructionSet[matchId].mnemonic<<" $"
                             <<((instruction>>21)&0x1f)<<", $"
                            <<((instruction>>16)&0x1f)<<", "
-                             <<hex<<(instruction&0xffff)<<reset<<endl;
+                             <<(instruction&0xffff)<<endl;
             break;
 
         case 8: case 9:
             //j,jal
             streamDisassem<<coreInstructionSet[matchId].mnemonic<<" "
-                          <<hex<<(instruction&0x3ffffff)<<reset<<endl;
+                          <<((instruction&0x3ffffff))<<endl;
             break;
 
         case 10:
@@ -365,9 +412,7 @@ QString filename("/Users/ying/assemble");
     return 0;
 }
 
-#endif
 
-#if ASSEM
 int Assem(QString filename)
 {
     QFile fileXml(filename+".xml");
@@ -377,12 +422,20 @@ int Assem(QString filename)
     }
     QTextStream streamXml(&fileXml);
 
-    QFile fileObj(filename+".obj");
-    if(!fileObj.open(QIODevice::WriteOnly | QIODevice::Text)){
+    QFile fileObjHex(filename+".objh");
+    if(!fileObjHex.open(QIODevice::WriteOnly | QIODevice::Text)){
         qDebug()<<"Error in writing to object file";
         return -1;
     }
-    QTextStream streamObj(&fileObj);
+    QTextStream streamObj(&fileObjHex);
+
+    QFile fileObj(filename+".obj");
+    if(!fileObj.open(QIODevice::WriteOnly)){
+        qDebug()<<"Error in writing to object file";
+        return -1;
+    }
+    QDataStream streamObjB(&fileObj);
+
 
     QString line;
     unsigned int lineNumber;
@@ -441,13 +494,13 @@ int Assem(QString filename)
                 //beq,bne
                 rs=(unsigned short int)matchTable.instructionEncode(streamXml,"<register>",labelLookUpTable);
                 rt=(unsigned short int)matchTable.instructionEncode(streamXml,"<register>",labelLookUpTable);
-                address=(unsigned short int)matchTable.instructionEncode(streamXml,"<reference>",labelLookUpTable);
+                address=(unsigned short int)matchTable.instructionEncode(streamXml,"<ref/param>",labelLookUpTable);
                 instruction=instruction | rs<<21 | rt<<16 | address;
                 break;
 
             case 8: case 9:
                 //j,jal
-                address=(unsigned short int)matchTable.instructionEncode(streamXml,"<reference>",labelLookUpTable);
+                address=(unsigned short int)matchTable.instructionEncode(streamXml,"<ref/param>",labelLookUpTable);
                 instruction=instruction | address;
                 break;
 
@@ -488,6 +541,7 @@ int Assem(QString filename)
             streamObj<<qSetFieldWidth(8)<<qSetPadChar('0')<<hex<<instruction;
             streamObj<<reset;
             streamObj<<endl;
+            streamObjB<<instruction;
         }
 
         line=streamXml.readLine();
@@ -496,6 +550,7 @@ int Assem(QString filename)
     }
 
     fileXml.close();
+    fileObjHex.close();
     fileObj.close();
 
     return 0;
@@ -508,7 +563,7 @@ int Parser(QString filename)
     //QTextCodec::setCodecForLocale(codecName);
     //QString filename;
     //filename="assemble";
-    QFile fileAsm(filename);
+    QFile fileAsm(filename+".asm");
     if(!fileAsm.open(QIODevice::ReadOnly | QIODevice::Text)){
         qDebug()<<"Error in opening ASM file";
         return -1;
@@ -628,58 +683,12 @@ int Parser(QString filename)
 }
 
 
-int main(void)
+int Assembler::Assemble(QString filename)
 {
-    QString filename("/Users/ying/assemble");
-
     Parser(filename);
     Assem(filename);
 
     return 0;
 }
-
-#endif
-
-#if TEST
-void foo(QTextStream &stream)
-{
-    QString line;
-    line=stream.readLine();
-    qDebug()<<line;
-
-    return;
-}
-
-int main(void)
-{
-    QFile fileAsm("/Users/ying/assemble");
-    if(!fileAsm.open(QIODevice::ReadOnly | QIODevice::Text)){
-        qDebug()<<"Error in opening ASM file";
-    }
-    QTextStream streamAsm(&fileAsm);
-
-
-    QRegExp instructionPattern;
-    instructionPattern.setPattern("^\\$([a-zA-Z]+\\d*)$");
-    instructionPattern.setCaseSensitivity(Qt::CaseInsensitive);
-    QRegExp labelPattern("\\s*(\\$[a-zA-Z]*\\d*)\\s*");
-    labelPattern.setCaseSensitivity(Qt::CaseSensitive);
-
-    QString line;
-    line=streamAsm.readLine();
-    qDebug()<<line;
-    foo(streamAsm);
-    line=streamAsm.readLine();
-    qDebug()<<line;
-    instructionPattern.indexIn(line);
-    std::cout<<instructionPattern.capturedTexts()[1].toStdString();
-
-    fileAsm.close();
-//        instructionPattern.indexIn(line);
-//        qDebug()<<instructionPattern.capturedTexts();
-
-}
-
-#endif
 
 

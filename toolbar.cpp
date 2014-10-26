@@ -1,44 +1,3 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
 #include "toolbar.h"
 
 #include <QMainWindow>
@@ -49,6 +8,9 @@
 #include <QLabel>
 #include <QToolTip>
 #include <QDebug>
+#include <QMessageBox>
+#include "mainwindow.h"
+#include "modules/modules.h"
 
 #include <stdlib.h>
 
@@ -59,7 +21,7 @@ static QPixmap genIcon(const QSize &iconSize, const QString & imageName, const Q
 
     QImage image(w, h, QImage::Format_ARGB32_Premultiplied);
     //image.fill(0);
-    image.load("/Users/ying/Documents/qt_prj/assembler-gui/sources/"+imageName+".png");
+    image.load("sources/"+imageName+".png");
     QPainter p(&image);
 
     //extern void render_qt_text(QPainter *, int, int, const QColor &);
@@ -67,6 +29,7 @@ static QPixmap genIcon(const QSize &iconSize, const QString & imageName, const Q
 
     return QPixmap::fromImage(image, Qt::DiffuseDither | Qt::DiffuseAlphaDither);
 }
+
 
 static QPixmap genIcon(const QSize &iconSize, int number, const QColor &color)
 { return genIcon(iconSize, QString::number(number), color); }
@@ -82,117 +45,33 @@ ToolBar::ToolBar(const QString &title, QWidget *parent)
 
     //QColor bg(palette().background().color());
 
-    menu = new QMenu("Run", this);
-    menu->setIcon(genIcon(iconSize(), "run", Qt::black));
-    menu->addAction("Run to");
-    addAction(menu->menuAction());
+//    menu = new QMenu("Run", this);
+//    menu->setIcon(genIcon(iconSize(), "run", Qt::black));
 
-    addAction(genIcon(iconSize(), "stop", Qt::blue), "Stop");
-    addAction(genIcon(iconSize(), "next", Qt::yellow), "Next");
-
-//    QAction *two = addAction(genIcon(iconSize(), 2, Qt::white), "Two");
-//    QFont boldFont;
-//    boldFont.setBold(true);
-//    two->setFont(boldFont);
+//    action=menu->addAction("Run to");
+//    addAction(menu->menuAction());            
 
 
 
-//    orderAction = new QAction(this);
-//    orderAction->setText(tr("Order Items in Tool Bar"));
-//    connect(orderAction, SIGNAL(triggered()), SLOT(order()));
+    QAction * action=addAction(genIcon(iconSize(), "run", Qt::blue), "Run");
+    connect(action, SIGNAL(triggered()), this, SLOT(Run()));
 
-//    randomizeAction = new QAction(this);
-//    randomizeAction->setText(tr("Randomize Items in Tool Bar"));
-//    connect(randomizeAction, SIGNAL(triggered()), SLOT(randomize()));
+    action=addAction(genIcon(iconSize(), "runto", Qt::blue), "Runto");
+    connect(action, SIGNAL(triggered()), this, SLOT(Runto()));
 
-//    addSpinBoxAction = new QAction(this);
-//    addSpinBoxAction->setText(tr("Add Spin Box"));
-//    connect(addSpinBoxAction, SIGNAL(triggered()), SLOT(addSpinBox()));
+    action=addAction(genIcon(iconSize(), "stop", Qt::blue), "Stop");
+    connect(action, SIGNAL(triggered()), this, SLOT(SetStop()));
 
-//    removeSpinBoxAction = new QAction(this);
-//    removeSpinBoxAction->setText(tr("Remove Spin Box"));
-//    removeSpinBoxAction->setEnabled(false);
-//    connect(removeSpinBoxAction, SIGNAL(triggered()), SLOT(removeSpinBox()));
+    action=addAction(genIcon(iconSize(), "next", Qt::yellow), "Next");
+    connect(action, SIGNAL(triggered()), this, SLOT(Next()));
 
-//    movableAction = new QAction(tr("Movable"), this);
-//    movableAction->setCheckable(true);
-//    connect(movableAction, SIGNAL(triggered(bool)), SLOT(changeMovable(bool)));
+}
 
-//    allowedAreasActions = new QActionGroup(this);
-//    allowedAreasActions->setExclusive(false);
 
-//    allowLeftAction = new QAction(tr("Allow on Left"), this);
-//    allowLeftAction->setCheckable(true);
-//    connect(allowLeftAction, SIGNAL(triggered(bool)), SLOT(allowLeft(bool)));
 
-//    allowRightAction = new QAction(tr("Allow on Right"), this);
-//    allowRightAction->setCheckable(true);
-//    connect(allowRightAction, SIGNAL(triggered(bool)), SLOT(allowRight(bool)));
-
-//    allowTopAction = new QAction(tr("Allow on Top"), this);
-//    allowTopAction->setCheckable(true);
-//    connect(allowTopAction, SIGNAL(triggered(bool)), SLOT(allowTop(bool)));
-
-//    allowBottomAction = new QAction(tr("Allow on Bottom"), this);
-//    allowBottomAction->setCheckable(true);
-//    connect(allowBottomAction, SIGNAL(triggered(bool)), SLOT(allowBottom(bool)));
-
-//    allowedAreasActions->addAction(allowLeftAction);
-//    allowedAreasActions->addAction(allowRightAction);
-//    allowedAreasActions->addAction(allowTopAction);
-//    allowedAreasActions->addAction(allowBottomAction);
-
-//    areaActions = new QActionGroup(this);
-//    areaActions->setExclusive(true);
-
-//    leftAction = new QAction(tr("Place on Left") , this);
-//    leftAction->setCheckable(true);
-//    connect(leftAction, SIGNAL(triggered(bool)), SLOT(placeLeft(bool)));
-
-//    rightAction = new QAction(tr("Place on Right") , this);
-//    rightAction->setCheckable(true);
-//    connect(rightAction, SIGNAL(triggered(bool)), SLOT(placeRight(bool)));
-
-//    topAction = new QAction(tr("Place on Top") , this);
-//    topAction->setCheckable(true);
-//    connect(topAction, SIGNAL(triggered(bool)), SLOT(placeTop(bool)));
-
-//    bottomAction = new QAction(tr("Place on Bottom") , this);
-//    bottomAction->setCheckable(true);
-//    connect(bottomAction, SIGNAL(triggered(bool)), SLOT(placeBottom(bool)));
-
-//    areaActions->addAction(leftAction);
-//    areaActions->addAction(rightAction);
-//    areaActions->addAction(topAction);
-//    areaActions->addAction(bottomAction);
-
-//    toolBarBreakAction = new QAction(tr("Insert break"), this);
-//    connect(toolBarBreakAction, SIGNAL(triggered(bool)), this, SLOT(insertToolBarBreak()));
-
-//    connect(movableAction, SIGNAL(triggered(bool)), areaActions, SLOT(setEnabled(bool)));
-
-//    connect(movableAction, SIGNAL(triggered(bool)), allowedAreasActions, SLOT(setEnabled(bool)));
-
-//    menu = new QMenu(title, this);
-//    menu->addAction(toggleViewAction());
-//    menu->addSeparator();
-//    menu->addAction(orderAction);
-//    menu->addAction(randomizeAction);
-//    menu->addSeparator();
-//    menu->addAction(addSpinBoxAction);
-//    menu->addAction(removeSpinBoxAction);
-//    menu->addSeparator();
-//    menu->addAction(movableAction);
-//    menu->addSeparator();
-//    menu->addActions(allowedAreasActions->actions());
-//    menu->addSeparator();
-//    menu->addActions(areaActions->actions());
-//    menu->addSeparator();
-//    menu->addAction(toolBarBreakAction);
-
-//    connect(menu, SIGNAL(aboutToShow()), this, SLOT(updateMenu()));
-
-    //randomize();
+void ToolBar::msg()
+{
+    QMessageBox::information(this,"O","yeah");
 }
 
 void ToolBar::updateMenu()
@@ -382,3 +261,4 @@ void ToolBar::leaveEvent(QEvent*)
     if (tip != 0)
         tip->hide();
 }
+

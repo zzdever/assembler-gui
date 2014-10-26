@@ -1,48 +1,14 @@
-/****************************************************************************
-**
-** Copyright (C) 2013 Digia Plc and/or its subsidiary(-ies).
-** Contact: http://www.qt-project.org/legal
-**
-** This file is part of the demonstration applications of the Qt Toolkit.
-**
-** $QT_BEGIN_LICENSE:LGPL$
-** Commercial License Usage
-** Licensees holding valid commercial Qt licenses may use this file in
-** accordance with the commercial license agreement provided with the
-** Software or, alternatively, in accordance with the terms contained in
-** a written agreement between you and Digia.  For licensing terms and
-** conditions see http://qt.digia.com/licensing.  For further information
-** use the contact form at http://qt.digia.com/contact-us.
-**
-** GNU Lesser General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU Lesser
-** General Public License version 2.1 as published by the Free Software
-** Foundation and appearing in the file LICENSE.LGPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU Lesser General Public License version 2.1 requirements
-** will be met: http://www.gnu.org/licenses/old-licenses/lgpl-2.1.html.
-**
-** In addition, as a special exception, Digia gives you certain additional
-** rights.  These rights are described in the Digia Qt LGPL Exception
-** version 1.1, included in the file LGPL_EXCEPTION.txt in this package.
-**
-** GNU General Public License Usage
-** Alternatively, this file may be used under the terms of the GNU
-** General Public License version 3.0 as published by the Free Software
-** Foundation and appearing in the file LICENSE.GPL included in the
-** packaging of this file.  Please review the following information to
-** ensure the GNU General Public License version 3.0 requirements will be
-** met: http://www.gnu.org/copyleft/gpl.html.
-**
-**
-** $QT_END_LICENSE$
-**
-****************************************************************************/
-
 #ifndef TOOLBAR_H
 #define TOOLBAR_H
 
 #include <QToolBar>
+#include <QInputDialog>
+#include <QDebug>
+#include "modules/modules.h"
+#include "mainwindow.h"
+
+#define NEXT -1
+#define RUN -2
 
 QT_FORWARD_DECLARE_CLASS(QAction)
 QT_FORWARD_DECLARE_CLASS(QActionGroup)
@@ -82,6 +48,10 @@ public:
     ToolBar(const QString &title, QWidget *parent);
 
     QMenu *menu;
+    int runMode;
+    Emulator emulator;
+
+
 
 protected:
     void enterEvent(QEvent*);
@@ -91,6 +61,11 @@ private:
     void allow(Qt::ToolBarArea area, bool allow);
     void place(Qt::ToolBarArea area, bool place);
     QLabel *tip;
+    int runLine;
+
+signals:
+    void Step(int line);
+    void Stop(void);
 
 private slots:
     void order();
@@ -112,6 +87,26 @@ private slots:
 
     void updateMenu();
     void insertToolBarBreak();
+
+    void msg();
+    void Run()
+    {
+        emit Step(RUN);
+    }
+    void Runto()
+    {
+        runLine=QInputDialog::getInt(this,tr("Input line number"),tr("Please input line number"));
+        if(runLine>0) {emit Step(runLine);}
+    }
+    void SetStop()
+    {
+        emit Stop();
+    }
+    void Next()
+    {
+        emit Step(NEXT);
+    }
+
 
 };
 

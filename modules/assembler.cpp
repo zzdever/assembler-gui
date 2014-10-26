@@ -65,7 +65,17 @@ int MatchTable::instructionEncode(QTextStream &streamXml, QString type, LookUpTa
     int matchId;
 
     streamXml>>line;
-    if(line!=type)
+    if(type.compare("<ref/param>")==0)
+    {
+        if(line.compare("<parameter>")!=0 && line.compare("<reference>")!=0)
+        {
+            streamXml>>line;
+            qDebug()<<line<<"Incompatible operand. A "<<type<<" is expected";
+            streamXml.readLine();
+            return -1;
+        }
+    }
+    else if(line!=type)
     {
         streamXml>>line;
         qDebug()<<line<<"Incompatible operand. A "<<type<<" is expected";
