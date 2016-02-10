@@ -530,7 +530,7 @@ int Assem(QString filename)
                 rd=(unsigned short int)matchTable.instructionEncode(streamXml,"<register>",labelLookUpTable);
                 rt=(unsigned short int)matchTable.instructionEncode(streamXml,"<register>",labelLookUpTable);
                 shamt=(unsigned short int)matchTable.instructionEncode(streamXml,"<parameter>",labelLookUpTable);
-                instruction=instruction | rs<<21 | rt<<16 | rd<<11 | shamt<<6;
+                instruction=instruction | rt<<16 | rd<<11 | shamt<<6;
                 break;
 
             default:
@@ -591,7 +591,18 @@ int Parser(QString filename)
     int lineNumber=0;
     unsigned int address=0;
     LookUpTable labelLookUpTable;
+
+
+    int count=0;
+
+
+
     while (!streamAsm.atEnd()) {
+        count++;
+        if(count>20) break;
+
+
+
         streamXml<<"<linenumber> "<<++lineNumber<<" </linenumber>"<<endl;
         line=streamAsm.readLine();
         if(blanklinePattern.indexIn(line)>=0) {
@@ -603,6 +614,7 @@ int Parser(QString filename)
         int position=0;
         short labelFlag=0;
         short instructionFlag=0;
+
         while(position<line.length())
         {
             if(line[position]=='#' || (line[position]=='/'&&line[position+1]=='/'))
